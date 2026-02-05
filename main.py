@@ -1,12 +1,12 @@
 """
 AI-Generated Voice Detection API
 GUVI × HCL Hackathon 2026
-FINAL SUBMISSION – BASE64 JSON COMPATIBLE
+FINAL VERSION (GUVI TESTER COMPATIBLE)
 """
 
 from fastapi import FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional
 import base64
 import numpy as np
@@ -19,7 +19,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # -------------------------------------------------
-# App
+# App Setup
 # -------------------------------------------------
 app = FastAPI(
     title="AI Voice Detection API",
@@ -40,12 +40,16 @@ API_KEY = "sk_test_guvi_hackathon_2026"
 SUPPORTED_LANGUAGES = ["Tamil", "English", "Hindi", "Malayalam", "Telugu"]
 
 # -------------------------------------------------
-# Request & Response Models
+# Request / Response Models
 # -------------------------------------------------
 class VoiceRequest(BaseModel):
     language: str
-    audio_format: str
-    audio_base64: str
+    audio_format: str = Field(..., alias="audioFormat")
+    audio_base64: str = Field(..., alias="audioBase64")
+
+    class Config:
+        populate_by_name = True  # VERY IMPORTANT for GUVI
+
 
 class VoiceResponse(BaseModel):
     status: str
@@ -55,7 +59,7 @@ class VoiceResponse(BaseModel):
     explanation: str
 
 # -------------------------------------------------
-# Utility Functions
+# Core Logic
 # -------------------------------------------------
 def extract_features(audio_base64: str) -> dict:
     audio_bytes = base64.b64decode(audio_base64)
@@ -66,32 +70,34 @@ def extract_features(audio_base64: str) -> dict:
         "mean": float(np.mean(audio_array)),
         "std": float(np.std(audio_array)),
         "var": float(np.var(audio_array)),
-        "range": float(np.max(audio_array) - np.min(audio_array))
+        "range": float(np.max(audio_array) - np.min(audio_array)),
     }
 
+
 def detect_voice(features: dict) -> tuple:
-    ai_score = 0
+    ai_score = 0.0
 
     if features["var"] < 2000:
-        ai_score += 0.3
+        ai_score += 0.30
     if features["length"] < 15000:
-        ai_score += 0.2
+        ai_score += 0.20
     if features["std"] < 30:
-        ai_score += 0.2
+        ai_score += 0.20
     if features["range"] < 100:
-        ai_score += 0.3
+        ai_score += 0.30
 
     if ai_score >= 0.5:
         return "AI_GENERATED", round(0.6 + ai_score * 0.3, 2)
     else:
         return "HUMAN", round(0.6 + (1 - ai_score) * 0.3, 2)
 
+
 def generate_explanation(label: str, confidence: float) -> str:
     if label == "AI_GENERATED":
         return (
             f"AI-generated voice detected with {confidence*100:.0f}% confidence. "
-            f"The audio shows synthetic patterns such as low natural variance "
-            f"and uniform acoustic structure commonly found in text-to-speech systems."
+            f"The audio shows synthetic patterns, reduced natural variance, "
+            f"and uniform acoustic structure typical of text-to-speech systems."
         )
     else:
         return (
@@ -101,7 +107,7 @@ def generate_explanation(label: str, confidence: float) -> str:
         )
 
 # -------------------------------------------------
-# Routes
+# API Endpoints
 # -------------------------------------------------
 @app.get("/")
 def root():
@@ -116,6 +122,7 @@ def root():
         }
     }
 
+
 @app.get("/health")
 def health():
     return {
@@ -124,16 +131,17 @@ def health():
         "version": "1.0.0"
     }
 
+
 @app.post("/api/voice-detection", response_model=VoiceResponse)
 def voice_detection(
     payload: VoiceRequest,
     x_api_key: Optional[str] = Header(None)
 ):
-    # API key validation
+    # Validate API key
     if x_api_key != API_KEY:
         raise HTTPException(status_code=401, detail="Invalid API key")
 
-    # Language validation
+    # Validate language
     if payload.language not in SUPPORTED_LANGUAGES:
         raise HTTPException(status_code=400, detail="Unsupported language")
 
